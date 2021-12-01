@@ -1,0 +1,510 @@
+---
+title: "Cyclistic Case Study"
+author: "Kent Tse"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Cyclistic 12 Month Analysis
+
+This analysis is based on the Cyclistic case study for the Google Data Analytics Certificate. 
+
+**Task:** 
+Analyze past 12 months of historical bikeshare trip data to determine how annual members and casual riders use Cyclistic bikes differently.
+
+**Dataset:** 
+Monthly trip data from September 2020 to August 2021 was used in this case study.The data is anonymized for data-privacy, omitting any personally identifiable information. The data contains trip start day and time, end day and time, start station, end station, and rider type. The data is been processed to remove maintenance trips and trips below 60 seconds in length are noted as potentially false starts.
+
+The data used in this case study is public and provided by Motivate International Inc. under the following license: https://www.divvybikes.com/data-license-agreement
+
+
+#### Required packages
+The following packages will be used:
+
+* tidyverse for data import and wrangling
+* lubridate for date functions
+* ggplot2 for visualization
+* scales for axis values
+* leaflet for interactive map
+
+```{r Load packages, message=FALSE, results='hide'}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(scales)
+library(leaflet)
+```
+# Part 1: Data Cleaning and Processing
+### Import data
+```{r Import data from CSV, message=FALSE, results='hide'}
+getwd() # to display working directory
+setwd("/Users/Kent/Documents/Side Projects/R/CYCLISTIC/raw data/") # set to appropriate working directory
+sep_2020 <- read_csv("202009-divvy-tripdata.csv")
+oct_2020 <- read_csv("202010-divvy-tripdata.csv")
+nov_2020 <- read_csv("202011-divvy-tripdata.csv")
+dec_2020 <- read_csv("202012-divvy-tripdata.csv")
+jan_2021 <- read_csv("202101-divvy-tripdata.csv")
+feb_2021 <- read_csv("202102-divvy-tripdata.csv")
+mar_2021 <- read_csv("202103-divvy-tripdata.csv")
+apr_2021 <- read_csv("202104-divvy-tripdata.csv")
+may_2021 <- read_csv("202105-divvy-tripdata.csv")
+jun_2021 <- read_csv("202106-divvy-tripdata.csv")
+jul_2021 <- read_csv("202107-divvy-tripdata.csv")
+aug_2021 <- read_csv("202108-divvy-tripdata.csv")
+```
+
+### Wrangle data and combine into a single file
+Make sure that column names match before joining into one file
+```{r Check column names, message=FALSE, results='hide'}
+colnames(sep_2020)
+colnames(oct_2020)
+colnames(nov_2020)
+colnames(dec_2020)
+colnames(jan_2021)
+colnames(feb_2021)
+colnames(mar_2021)
+colnames(apr_2021)
+colnames(may_2021)
+colnames(jun_2021)
+colnames(jul_2021)
+colnames(aug_2021)
+```
+Check the structure of the data to make sure it's consistent
+```{r Check structure of data frames, message=FALSE, results='hide'}
+str(sep_2020)
+str(oct_2020)
+str(nov_2020)
+str(dec_2020)
+str(jan_2021)
+str(feb_2021)
+str(mar_2021)
+str(apr_2021)
+str(may_2021)
+str(jun_2021)
+str(jul_2021)
+str(aug_2021)
+```
+The data type for "start_station_id" and "end_station_id" in "sep_2020", "oct_2020", and nov_2020" are doubles (numeric) where as the rest of the sheets are characters.
+
+Convert "start_station_id" and "end_station_id" to character as well to stack the sheets correctly.
+```{r Convert "start_station_id" and "end_station_id" to character}
+sep_2020 <- mutate(sep_2020,start_station_id=as.character(start_station_id),
+                   end_station_id=as.character(end_station_id))
+oct_2020 <- mutate(oct_2020,start_station_id=as.character(start_station_id),
+                   end_station_id=as.character(end_station_id))
+nov_2020 <- mutate(nov_2020,start_station_id=as.character(start_station_id),
+                   end_station_id=as.character(end_station_id))
+```
+
+```{r Stack data frames to create large dataframe}
+all_trips <- bind_rows(sep_2020,oct_2020,nov_2020,dec_2020,jan_2021,feb_2021,mar_2021,apr_2021,may_2021,jun_2021,jul_2021,aug_2021)
+```
+
+### Clean data for analysis
+First, get an overview of the data frame "all_trips".
+
+To prepare the data for analysis:
+
+* Validate that the "member_casual" column has only two names: casual and member
+* Add columns for date, month, day, and year of each ride to aggregate
+* Add a calculated field for trip duration called "ride_length"
+* Check that "ride_length" has no negative values
+* Check for any missing values in the data
+
+#### Overview of "all_trips"
+```{r Overview of all_trips data frame}
+colnames(all_trips)
+nrow(all_trips)
+dim(all_trips)
+head(all_trips)
+str(all_trips)
+summary(all_trips)
+```
+#### Validate "member_casual" column
+```{r Validate member_casual column}
+table(all_trips$member_casual) #Check values in "member_casual" column
+#Use the following if changes need to be made:
+#all_trips <- all_trips %>% 
+#  mutate(member_casual=recode(member_casual,
+#                              "EDIT"="member",
+#                              "EDIT"="casual"))
+#table(all_trips$member_casual)
+```
+#### Create new columns for date, month, day, year, and day of week
+```{r Create columns for date, month, day, year, and day of week}
+all_trips$date <- as.Date(all_trips$started_at)
+all_trips$month <- format(as.Date(all_trips$date),"%m")
+all_trips$day <- format(as.Date(all_trips$date),"%d")
+all_trips$year <- format(as.Date(all_trips$date),"%Y")
+all_trips$day_of_week <- format(as.Date(all_trips$date),"%A")
+```
+#### Add "ride_length" column to calculate trip duration in seconds
+```{r Add "ride_length" to calculate trip duration in seconds, message=FALSE, results='hide'}
+all_trips$ride_length <- difftime(all_trips$ended_at,all_trips$started_at)
+str(all_trips) #Verify that data types are correct 
+
+## Use following chunk if "ride_length" is not numeric
+#typeof(all_trips$ride_length)
+#all_trips$ride_length <- as.numeric(as.character(all_trips$ride_length))
+```
+#### Remove rows with missing and negative values in "ride_length"
+```{r Remove the incorrect data by creating a new version of the data frame (v2)}
+all_trips_v2 <- all_trips[!(is.na(all_trips$ride_length)|all_trips$ride_length<0),]
+```
+#### Remove test trips and trips under 60 sec
+
+There appears to be many entries with ride duration of 0 sec and less than 1 minute. Some of these entries were made from fasle starts or may be from re-racking of bikes according to the notes about the data.
+```{r Remove trips under 60 seconds}
+all_trips_v3 <- all_trips_v2 %>% 
+  filter(!(ride_length < 60))
+```
+#### Check for blank values
+```{r Check for blank values}
+colSums(is.na(all_trips_v3))
+```
+It appears that there are many incomplete entries for start_station_name, start_station_id, end_station_name, end_station_id, end_lat, and end_lng. 
+
+Let's filter the data by removing these incomplete rows
+
+```{r Removing incomplete rows}
+all_trips_v3 <- all_trips_v3 %>% 
+  filter(!(is.na(start_station_name))) %>% 
+  filter(!(is.na(end_station_name))) %>% 
+  filter(!(is.na(start_station_id))) %>% 
+  filter(!(is.na(end_station_id)))
+
+colSums(is.na(all_trips_v3))
+```
+# Part 2: Analysis
+### Analyze the data:
+
+* Calculate mean, median, max, and min for "ride_length"
+* Aggregate data to compare members and casual riders
+* Calculate average "ride_length" for members and casual riders by day of week
+* Analyze the times that rides are taken throughout the days of the week
+* Analyze number of rides and average ride time for members vs casual riders by day of week
+* Analyze number of rides by month (seasonal differences)
+
+### Summary statistics for ride length
+```{r Summary statistics of "ride_length"}
+summary(all_trips_v3$ride_length)
+```
+#### Aggregate data to compare members and casual riders
+```{r Aggregate data to compare members and casual riders}
+aggregate(all_trips_v3$ride_length ~ all_trips_v3$member_casual, FUN=mean)
+aggregate(all_trips_v3$ride_length ~ all_trips_v3$member_casual, FUN=median)
+aggregate(all_trips_v3$ride_length ~ all_trips_v3$member_casual, FUN=max)
+aggregate(all_trips_v3$ride_length ~ all_trips_v3$member_casual, FUN=min)
+```
+### Average ride length by day of week
+```{r Calculate average "ride_length" for members and casual riders by day of week}
+# First set order the day of week
+all_trips_v3$day_of_week <- ordered(all_trips_v3$day_of_week, levels=c("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"))
+#Now calculate average "ride_length" for members vs casual riders by day of week
+aggregate(all_trips_v3$ride_length ~ all_trips_v3$member_casual+all_trips_v3$day_of_week,FUN=mean)
+```
+### Total number of rides and average ride length by day of week
+```{r Calculate total number of rides and average ride_legnth}
+all_trips_v3 %>% 
+  mutate(weekday=wday(started_at,label = TRUE)) %>% #Create weekday column
+  group_by(member_casual,weekday) %>% #Group by user type and weekday
+  summarise(number_of_rides=n(), #Number of rides and average duration
+            average_duration=mean(ride_length)) %>% 
+  arrange(member_casual,weekday) #Sort by user type and weekday
+```
+#### Visualize number of member and casual rides throughout the week
+```{r Visualization for the number of rides by user type}
+all_trips_v3 %>% 
+  mutate(weekday=wday(started_at,label = TRUE)) %>% 
+  group_by(member_casual,weekday) %>% 
+  summarise(number_of_rides=n(),
+            average_duration=mean(ride_length)) %>% 
+  arrange(member_casual,weekday) %>% 
+  ggplot(aes(x=weekday,y=number_of_rides,fill=member_casual))+
+    geom_col(position = "dodge")+
+    labs(title = "Number of Rides by Day of Week", 
+         fill="Rider Type",
+         x = "Day of Week",
+         y = "Number of Rides")+
+    scale_y_continuous(labels=comma)
+```
+
+#### Visualize average ride duration of members and casual riders
+
+```{r Visualization for average ride duration by user type}
+all_trips_v3 %>% 
+  mutate(weekday=wday(started_at,label = TRUE),ride_length=(ride_length/60)) %>% 
+  group_by(member_casual,weekday) %>% 
+  summarise(number_of_rides=n(),
+            average_duration=mean(ride_length)) %>% 
+  arrange(member_casual,weekday) %>% 
+  ggplot(aes(x=weekday,y=average_duration,fill=member_casual))+
+  geom_col(position = "dodge")+
+  labs(title = "Average Ride Duration by Day of Week", 
+       fill="Rider Type",
+       x = "Day of Week",
+       y = "Average Duration (min)")
+```
+
+### Number of rides by hour on weekdays
+
+```{r Number of rides by hour on weekdays}
+all_trips_v3 %>% 
+  filter(day_of_week != "Saturday" & day_of_week != "Sunday") %>% 
+  mutate(start_hour=hour(started_at)) %>% 
+  group_by(member_casual,start_hour) %>% 
+  summarise(number_of_rides=n()) %>% 
+  arrange(member_casual,start_hour) 
+
+```
+
+#### Visualize number of rides by hour on weekdays
+
+```{r Plot time of rides throughout the day}
+all_trips_v3 %>% 
+  filter(day_of_week != "Saturday" & day_of_week != "Sunday") %>% 
+  mutate(start_hour=hour(started_at)) %>% 
+  group_by(member_casual,start_hour) %>% 
+  summarise(number_of_rides=n()) %>% 
+  arrange(member_casual,start_hour) %>%  
+  ggplot(aes(x=start_hour,y=number_of_rides,color=member_casual))+
+  geom_line()+
+  labs(title = "Number of rides by hour (Monday to Friday)",
+       x = "Time (hour)",
+       y = "Number of Rides")+
+  scale_x_continuous(breaks = seq(0,23,2))
+```
+
+### Number of rides by hour on weekends
+
+```{r Number of rides by hour on weekends}
+all_trips_v3 %>% 
+  filter(day_of_week == "Saturday" | day_of_week == "Sunday") %>% 
+  mutate(start_hour=hour(started_at)) %>% 
+  group_by(member_casual,start_hour) %>% 
+  summarise(number_of_rides=n()) %>% 
+  arrange(member_casual,start_hour)
+```
+
+#### Visualize number of rides by hour on weekends
+
+```{r}
+all_trips_v3 %>% 
+  filter(day_of_week == "Saturday" | day_of_week == "Sunday") %>% 
+  mutate(start_hour=hour(started_at)) %>% 
+  group_by(member_casual,start_hour) %>% 
+  summarise(number_of_rides=n()) %>% 
+  arrange(member_casual,start_hour) %>% 
+  ggplot(aes(x=start_hour,y=number_of_rides,color=member_casual))+
+  geom_line()+
+  labs(title = "Number of rides by hour (Saturday & Sunday)", 
+       x = "Time (hour)", 
+       y = "Number of Rides")+
+  scale_x_continuous(breaks = seq(0,23,2))
+```
+
+### Number of rides by month
+
+```{r Number of rides by month}
+all_trips_v3 %>% 
+  mutate(month=factor(month.abb[as.numeric(month)],levels=month.abb)) %>% 
+  group_by(member_casual,month) %>% 
+  summarise(number_of_rides=n()) %>% 
+  arrange(member_casual,month)
+```
+#### Visualize number of rides by month
+```{r Visualization for number of rides by month}
+all_trips_v3 %>% 
+  mutate(month=factor(month.abb[as.numeric(month)],levels=month.abb)) %>% 
+  group_by(member_casual,month) %>% 
+  summarise(number_of_rides=n()) %>% 
+  arrange(member_casual,month) %>% 
+  ggplot(aes(x=month,y=number_of_rides,fill=member_casual))+
+  geom_col(position="dodge")+
+  labs(title = "Rides by Month",caption = "From Sep 2020 to Aug 2021",fill="Rider Type")+
+  ylab("Number of Rides")+
+  xlab("Month")+
+  scale_y_continuous(labels=comma)
+```
+
+### Mapping the coordinates
+
+```{r Count number of trips by station and coordinates}
+start_map_data <- all_trips_v3 %>% 
+  select(member_casual, start_station_name, start_lat, start_lng) %>% 
+  group_by(member_casual, start_station_name) %>% 
+  mutate(num_trips = n()) %>% 
+  distinct(start_station_name,.keep_all = TRUE)
+
+end_map_data <- all_trips_v3 %>% 
+  select(member_casual, end_station_name, end_lat, end_lng) %>% 
+  group_by(member_casual, end_station_name) %>% 
+  mutate(num_trips = n()) %>% 
+  distinct(end_station_name,.keep_all = TRUE)
+```
+#### Casual rides map
+```{r Interactive map with casual data}
+casual_start <- start_map_data %>% 
+  filter(member_casual == "casual")
+
+casual_end <- end_map_data %>% 
+  filter(member_casual =="casual")
+
+# create color palette for markers and legend
+cpal1 <- colorBin(
+  palette = "viridis",
+  domain = casual_start$num_trips,
+  bins = 5
+  )
+
+cpal2 <- colorBin(
+  palette = "viridis",
+  domain = casual_end$num_trips,
+  bins = 5
+  )
+
+# create map to show number of casual trips per station
+casual_map <- leaflet() %>% 
+  setView(lng = -87.62311, lat = 41.881832, zoom = 12) %>%  # set coordinates for Chicago
+  addTiles() %>% # add default OSM tiles
+  addCircleMarkers(
+    data = casual_start,
+    ~start_lng,
+    ~start_lat,
+    group = "Trip Start",
+    stroke = FALSE,
+    fillColor = ~cpal1(num_trips),
+    fillOpacity = 0.7,
+    radius = log(casual_start$num_trips), # marker size will vary based on number of trips
+    popup = ~paste("Station: ", casual_start$start_station_name,"<br/>",
+                   "Number of trips: ", casual_start$num_trips)
+  ) %>% 
+  
+  addLegend(
+    data = casual_start,
+    pal = cpal1,
+    values = ~num_trips,
+    opacity = 0.7,
+    title = "Number of trips (Start)",
+    position = "bottomright",
+    group = "Trip Start"
+  ) %>% 
+ 
+   addCircleMarkers(
+    data = casual_end,
+    ~end_lng,
+    ~end_lat,
+    group = "Trip End",
+    stroke = FALSE,
+    fillColor = ~cpal2(num_trips),
+    fillOpacity = 0.7,
+    radius = log(casual_end$num_trips),
+    popup = ~paste("Station: ", casual_end$end_station_name,"<br/>",
+                   "Number of trips: ", casual_end$num_trips)
+  ) %>% 
+  
+  addLegend(
+    data = casual_end,
+    pal = cpal2,
+    values = ~num_trips,
+    opacity = 0.7,
+    title = "Number of trips (End)",
+    position = "bottomright",
+    group = "Trip End"
+  ) %>% 
+  
+  # Layer controls to select view of start stations and end stations
+  addLayersControl(
+    overlayGroups = c("Trip Start","Trip End"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+casual_map
+```
+#### Member rides map
+```{r Interactive map with member data}
+member_start <- start_map_data %>% 
+  filter(member_casual == "member")
+
+member_end <- end_map_data %>% 
+  filter(member_casual =="member")
+
+# create color palette for markers and legend
+mpal1 <- colorBin(
+  palette = "viridis",
+  domain = member_start$num_trips,
+  bins = 5
+  )
+
+mpal2 <- colorBin(
+  palette = "viridis",
+  domain = member_end$num_trips,
+  bins = 5
+  )
+
+# create map to show number of member trips per station
+member_map <- leaflet() %>% 
+  setView(lng = -87.62311, lat = 41.881832, zoom = 12) %>% # set coordinates for Chicago
+  addTiles() %>%  # add default OSM tiles
+  addCircleMarkers( # create circle markers to represent each start station
+    data = member_start,
+    ~start_lng,
+    ~start_lat,
+    group = "Trip Start",
+    stroke = FALSE,
+    fillColor = ~mpal1(num_trips),
+    fillOpacity = 0.7,
+    radius = log(member_start$num_trips), # marker size will vary based on number of trips
+    popup = ~paste("Station: ", member_start$start_station_name,"<br/>",
+                   "Number of trips: ", member_start$num_trips)
+  ) %>% 
+  
+  addLegend(
+    data = member_start,
+    pal = mpal1,
+    values = ~num_trips,
+    opacity = 0.7,
+    title = "Number of trips (Start)",
+    position = "bottomright",
+    group = "Trip Start"
+  ) %>% 
+ 
+   addCircleMarkers(
+    data = member_end,
+    ~end_lng,
+    ~end_lat,
+    group = "Trip End",
+    stroke = FALSE,
+    fillColor = ~mpal2(num_trips),
+    fillOpacity = 0.7,
+    radius = log(member_end$num_trips),
+    popup = ~paste("Station: ", member_end$end_station_name,"<br/>",
+                   "Number of trips: ", member_end$num_trips)
+  ) %>% 
+  
+  addLegend(
+    data = member_end,
+    pal = mpal2,
+    values = ~num_trips,
+    opacity = 0.7,
+    title = "Number of trips (End)",
+    position = "bottomright",
+    group = "Trip End"
+  ) %>% 
+  
+  # add layer control to select view of start stations and end stations
+  addLayersControl(
+    overlayGroups = c("Trip Start","Trip End"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+member_map
+```
+```{r Top 10 stations table}
+top_10_stations <- start_map_data %>% 
+  arrange(desc(num_trips)) %>% 
+  group_by(member_casual) %>% 
+  slice(1:10)
+```
+
